@@ -8,7 +8,6 @@ require('dotenv').config();
 
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const SPOTIFY_SEARCH_URL = 'https://api.spotify.com/v1/search';
-const SPOTIFY_ARTISTS_URL = 'https://api.spotify.com/v1/artists';
 const TRELLO_BASE_URL = 'https://api.trello.com/1/';
 
 const TRELLO_USER_TOKEN = process.argv[2] || process.env.TRELLO_USER_TOKEN;
@@ -94,7 +93,7 @@ async function main() {
     }
   });
 
-  console.log('Obtaining album covers from spotify...');
+  console.log('Obtaining access to spotify...');
 
   const client_id = process.env.SPOTIFY_CLIENT_ID;
   const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
@@ -118,65 +117,6 @@ async function main() {
   }
   const spotify_token = response.data.access_token;
 
-  // Get albums from spotify
-  const artist_id = (await get(
-                      SPOTIFY_SEARCH_URL, {
-                        q: 'bob dylan',
-                        type: 'artist',
-                        limit: 1,
-                      }, {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${spotify_token}`
-                      },
-                      'artist from spotify'
-                    )).data.artists.items[0].id;
-
-  const first_albums_images = (await get(
-                                `${SPOTIFY_ARTISTS_URL}/${artist_id}/albums`, {
-                                  limit: 50,
-                                }, {
-                                  'Accept': 'application/json',
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${spotify_token}`
-                                },
-                                'albums from spotify'
-                              )).data.items;
-
-
-  const second_albums_images = (await get(
-                                `${SPOTIFY_ARTISTS_URL}/${artist_id}/albums`, {
-                                  limit: 50,
-                                  offset: 50
-                                }, {
-                                  'Accept': 'application/json',
-                                  'Content-Type': 'application/json',
-                                  'Authorization': `Bearer ${spotify_token}`
-                                },
-                                'albums from spotify'
-                              )).data.items;
-
-  const albums_images  = [...first_albums_images, ...second_albums_images].map((disk) => ({
-      year: disk.release_date.substring(0, 4),
-      name: disk.name,
-      images: disk.images
-    })).sort(sorter);
-
-
-  let images_by_decade = [{}];
-  images_by_decade[0][albums_images[0].year.substring(0, 3)] = []
-
-  albums_images.forEach((disk) => {
-    const current_decade = disk.year.substring(0, 3);
-    if ( Object.keys(images_by_decade[images_by_decade.length - 1])[0] == current_decade) {
-      images_by_decade[images_by_decade.length - 1][current_decade].push(disk)
-    } else {
-      images_by_decade.push({});
-
-      images_by_decade[images_by_decade.length - 1][current_decade] = [disk];
-    }
-  });
-
   console.log('Creating board on Trello...');
   const board_id = (await trello_post(
     'boards', {
@@ -199,12 +139,6 @@ async function main() {
       `creating list for ${year}`
     )).data.id;
 
-    while (Object.keys(images_by_decade[images_by_decade_index])[0] != year) {
-      ++images_by_decade_index;
-    };
-    const image_decade = images_by_decade[images_by_decade_index];
-
-    let image_decade_index = 0;
     for (let decade_index = 0; decade_index < decade[year].length; decade_index++) {
       const disk = decade[year][decade_index];
       const card_id = (await trello_post(
@@ -215,19 +149,23 @@ async function main() {
         `creating card for ${disk.name}`
       )).data.id;
 
-      const image_decade_previous_index = image_decade_index;
-      let found = false;
+      const album_from_spotify = (await get(
+                          SPOTIFY_SEARCH_URL, {
+                            q: `album:${disk.name} artist:Bob Dylan`,
+                            type: 'album',
+                            limit: 1,
+                          }, {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${spotify_token}`
+                          },
+                          'cover art from spotify'
+                        )).data.albums.items;
 
-      while (image_decade_index < image_decade[year].length && !(new RegExp(`${disk.name.toLowerCase()}`).test(image_decade[year][image_decade_index].name.toLowerCase()))) {
-        ++image_decade_index;
-      };
-
-      if (image_decade_index >= image_decade[year].length) {
-        image_decade_index = image_decade_previous_index;
-      } else {
+      if (album_from_spotify.length > 0) {
         trello_post(
           `cards/${card_id}/attachments`, {
-            url: image_decade[year][image_decade_index].images[0].url,
+            url: album_from_spotify[0].images[0].url,
             setCover: true,
           },
           `creating attachment for ${disk.name}`
