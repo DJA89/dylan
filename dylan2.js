@@ -3,7 +3,8 @@
 
 
 const axios = require('axios').default;
-const  querystring = require('querystring');
+const querystring = require('querystring');
+const fs = require('fs');
 require('dotenv').config();
 
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -16,11 +17,10 @@ async function get(url, params, headers, identifier) {
   let response;
   try {
     response = await axios.get(url, {
-        params: params,
-       headers: headers,
+      params: params,
+      headers: headers,
      }).catch(function (error) {
-       console.log(error.request);
-       console.log(`Request error on getting ${identifier}: ${error}`)
+      console.log(`Request error on getting ${identifier}: ${error}`)
      });
   } catch (err) {
     console.log(`Application error on getting ${identifier}: ${err}`);
@@ -32,22 +32,22 @@ async function trello_post(resource, params, identifier) {
   let response;
   try {
     response = await axios.post(`${TRELLO_BASE_URL}${resource}`, {},
-         {
-           params: {
-             ...params,
-             key: process.env.TRELLO_API_KEY,
-             token: TRELLO_USER_TOKEN,
-           },
-         }).catch(function (error) {
-           console.log(`Request error on ${identifier} on trello : ${error}`)
-         });
+      {
+        params: {
+          ...params,
+          key: process.env.TRELLO_API_KEY,
+          token: TRELLO_USER_TOKEN,
+        },
+      }).catch(function (error) {
+        console.log(`Request error on ${identifier} on trello : ${error}`)
+      });
   } catch (err) {
     console.log(`Application error on ${identifier} on trello: ${err}`);
   }
   return response;
 };
 
-function sorter(a, b) {
+function discography_sorter(a, b) {
   if (a.year != b.year) {
     return (a.year - b.year);
   } else {
@@ -59,17 +59,13 @@ function sorter(a, b) {
 
 async function main() {
   console.log('Starting...');
-  const our_path = process.argv[1];
-  const file_path = process.argv[3] || 'discography.txt';
-
-  fs = require('fs');
+  const file_path = process.argv[3] || './discography.txt';
 
   console.log('Processing file...');
-  const discography_path = `${our_path.replace(/\/[^\/]*$/, '')}/${file_path}`;
 
-  let discography = fs.readFileSync(discography_path, 'utf8').split('\n')
+  let discography = fs.readFileSync(file_path, 'utf8').split('\n');
 
-  discography.pop()
+  discography.pop();;;;;
 
   discography = discography.map((disk) => {
     const new_element = disk.match(/^(\d*) (.*)$/).slice(1, 3);
@@ -77,14 +73,14 @@ async function main() {
       year: new_element[0],
       name: new_element[1],
     }
-  }).sort(sorter);
+  }).sort(discography_sorter);
 
   let discography_by_decade = [{}];
 
-  discography_by_decade[0][discography[0].year.substring(0, 3)] = []
+  discography_by_decade[0][discography[0].year.substring(0, 3)] = [];
   discography.forEach((disk) => {
     const current_decade = disk.year.substring(0, 3);
-    if ( Object.keys(discography_by_decade[discography_by_decade.length - 1])[0] == current_decade) {
+    if ( Object.keys(discography_by_decade[discography_by_decade.length - 1])[0] === current_decade) {
       discography_by_decade[discography_by_decade.length - 1][current_decade].push(disk)
     } else {
       discography_by_decade.push({});
@@ -103,15 +99,15 @@ async function main() {
   let response;
   try {
     response = await axios.post(SPOTIFY_TOKEN_URL,
-         querystring.stringify({'grant_type':'client_credentials'}),
-         {
-           headers: {
-             'Content-Type': 'application/x-www-form-urlencoded',
-             'Authorization': `Basic ${encoded}`
-           }
-         }).catch(function (error) {
-           console.log(`Request error on getting token to spotify: ${error}`)
-         });
+      querystring.stringify({'grant_type':'client_credentials'}),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Basic ${encoded}`,
+        },
+      }).catch(function (error) {
+        console.log(`Request error on getting token to spotify: ${error}`);
+      });
   } catch (err) {
     console.log(`Application error on getting token to spotify: ${err}`);
   }
@@ -123,9 +119,10 @@ async function main() {
       name: "Bob Dylan's discography",
       defaultLists: false,
     },
-    'creating board'
+    'creating board',
   )).data.id;
 
+  // Using for loop instead of forEach so await works inside the loop
   let images_by_decade_index = 0;
   for (let discography_by_decade_index = 0; discography_by_decade_index < discography_by_decade.length; discography_by_decade_index++) {
     const decade = discography_by_decade[discography_by_decade_index];
@@ -136,7 +133,7 @@ async function main() {
         idBoard: board_id,
         pos: 'bottom',
       },
-      `creating list for ${year}`
+      `creating list for ${year}`,
     )).data.id;
 
     for (let decade_index = 0; decade_index < decade[year].length; decade_index++) {
@@ -146,21 +143,21 @@ async function main() {
           name: `${disk.year} - ${disk.name}`,
           idList: list_id,
         },
-        `creating card for ${disk.name}`
+        `creating card for ${disk.name}`,
       )).data.id;
 
       const album_from_spotify = (await get(
-                          SPOTIFY_SEARCH_URL, {
-                            q: `album:${disk.name} artist:Bob Dylan`,
-                            type: 'album',
-                            limit: 1,
-                          }, {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${spotify_token}`
-                          },
-                          'cover art from spotify'
-                        )).data.albums.items;
+        SPOTIFY_SEARCH_URL, {
+          q: `album:${disk.name} artist:Bob Dylan`,
+          type: 'album',
+          limit: 1,
+        }, {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${spotify_token}`,
+        },
+        'cover art from spotify',
+      )).data.albums.items;
 
       if (album_from_spotify.length > 0) {
         trello_post(
@@ -168,7 +165,7 @@ async function main() {
             url: album_from_spotify[0].images[0].url,
             setCover: true,
           },
-          `creating attachment for ${disk.name}`
+          `creating attachment for ${disk.name}`,
         );
       }
     };
