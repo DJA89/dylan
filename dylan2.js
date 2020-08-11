@@ -124,8 +124,7 @@ async function main() {
 
   // Using for loop instead of forEach so await works inside the loop
   let images_by_decade_index = 0;
-  for (let discography_by_decade_index = 0; discography_by_decade_index < discography_by_decade.length; discography_by_decade_index++) {
-    const decade = discography_by_decade[discography_by_decade_index];
+  for (const decade of discography_by_decade) {
     const year = Object.keys(decade)[0];
     const list_id = (await trello_post(
       'lists', {

@@ -29,7 +29,7 @@ async function get(url, params, headers, identifier) {
   return response;
 }
 
-async function trello_post(resource, params, identifier) {
+async function trelloPost(resource, params, identifier) {
   let response;
   try {
     response = await axios.post(`${TRELLO_BASE_URL}${resource}`, {},
@@ -48,7 +48,7 @@ async function trello_post(resource, params, identifier) {
   return response;
 };
 
-function discography_sorter(a, b) {
+function discographySorter(a, b) {
   if (a.year != b.year) {
     return (a.year - b.year);
   } else {
@@ -60,41 +60,41 @@ function discography_sorter(a, b) {
 
 async function main() {
   console.log('Starting...');
-  const file_path = process.argv[3] || './discography.txt';
+  const filePath = process.argv[3] || './discography.txt';
 
   console.log('Processing file...');
 
-  let discography = fs.readFileSync(file_path, 'utf8').split('\n');
+  let discography = fs.readFileSync(filePath, 'utf8').split('\n');
 
   discography.pop();
 
   discography = discography.map((disk) => {
-    const new_element = disk.match(/^(\d*) (.*)$/).slice(1, 3);
+    const newElement = disk.match(/^(\d*) (.*)$/).slice(1, 3);
     return {
-      year: new_element[0],
-      name: new_element[1],
+      year: newElement[0],
+      name: newElement[1],
     }
-  }).sort(discography_sorter);
+  }).sort(discographySorter);
 
-  let discography_by_decade = [{}];
+  let discographyByDecade = [{}];
 
-  discography_by_decade[0][discography[0].year.substring(0, 3)] = []
+  discographyByDecade[0][discography[0].year.substring(0, 3)] = []
   discography.forEach((disk) => {
-    const current_decade = disk.year.substring(0, 3);
-    if ( Object.keys(discography_by_decade[discography_by_decade.length - 1])[0] === current_decade) {
-      discography_by_decade[discography_by_decade.length - 1][current_decade].push(disk)
+    const currentDecade = disk.year.substring(0, 3);
+    if ( Object.keys(discographyByDecade[discographyByDecade.length - 1])[0] === currentDecade) {
+      discographyByDecade[discographyByDecade.length - 1][currentDecade].push(disk)
     } else {
-      discography_by_decade.push({});
+      discographyByDecade.push({});
 
-      discography_by_decade[discography_by_decade.length - 1][current_decade] = [disk];
+      discographyByDecade[discographyByDecade.length - 1][currentDecade] = [disk];
     }
   });
 
   console.log('Obtaining album covers from spotify...');
 
-  const client_id = process.env.SPOTIFY_CLIENT_ID;
-  const client_secret = process.env.SPOTIFY_CLIENT_SECRET;
-  const encoded = Buffer.from(`${client_id}:${client_secret}`).toString('base64');
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const encoded = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   // Get the token from spotify
   let response;
@@ -112,10 +112,10 @@ async function main() {
   } catch (err) {
     console.log(`Application error on getting token to spotify: ${err}`);
   }
-  const spotify_token = response.data.access_token;
+  const spotifyToken = response.data.access_token;
 
   // Get albums from spotify
-  const artist_id = (await get(
+  const artistId = (await get(
     SPOTIFY_SEARCH_URL, {
       q: 'bob dylan',
       type: 'artist',
@@ -123,58 +123,58 @@ async function main() {
     }, {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${spotify_token}`
+      'Authorization': `Bearer ${spotifyToken}`
     },
     'artist from spotify'
   )).data.artists.items[0].id;
 
-  const first_albums_images = (await get(
-    `${SPOTIFY_ARTISTS_URL}/${artist_id}/albums`, {
+  const firstAlbumsImages = (await get(
+    `${SPOTIFY_ARTISTS_URL}/${artistId}/albums`, {
       limit: 50,
     }, {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${spotify_token}`
+      'Authorization': `Bearer ${spotifyToken}`
     },
     'albums from spotify'
   )).data.items;
 
 
-  const second_albums_images = (await get(
-    `${SPOTIFY_ARTISTS_URL}/${artist_id}/albums`, {
+  const secondAlbumsImages = (await get(
+    `${SPOTIFY_ARTISTS_URL}/${artistId}/albums`, {
       limit: 50,
       offset: 50
     }, {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${spotify_token}`
+      'Authorization': `Bearer ${spotifyToken}`
     },
     'albums from spotify'
   )).data.items;
 
-  const albums_images  = [...first_albums_images, ...second_albums_images].map((disk) => ({
+  const albumsImages  = [...firstAlbumsImages, ...secondAlbumsImages].map((disk) => ({
     year: disk.release_date.substring(0, 4),
     name: disk.name,
     images: disk.images,
-  })).sort(discography_sorter);
+  })).sort(discographySorter);
 
 
-  let images_by_decade = [{}];
-  images_by_decade[0][albums_images[0].year.substring(0, 3)] = []
+  let imagesByDecade = [{}];
+  imagesByDecade[0][albumsImages[0].year.substring(0, 3)] = []
 
-  albums_images.forEach((disk) => {
-    const current_decade = disk.year.substring(0, 3);
-    if ( Object.keys(images_by_decade[images_by_decade.length - 1])[0] === current_decade) {
-      images_by_decade[images_by_decade.length - 1][current_decade].push(disk);
+  albumsImages.forEach((disk) => {
+    const currentDecade = disk.year.substring(0, 3);
+    if ( Object.keys(imagesByDecade[imagesByDecade.length - 1])[0] === currentDecade) {
+      imagesByDecade[imagesByDecade.length - 1][currentDecade].push(disk);
     } else {
-      images_by_decade.push({});
+      imagesByDecade.push({});
 
-      images_by_decade[images_by_decade.length - 1][current_decade] = [disk];
+      imagesByDecade[imagesByDecade.length - 1][currentDecade] = [disk];
     }
   });
 
   console.log('Creating board on Trello...');
-  const board_id = (await trello_post(
+  const boardId = (await trelloPost(
     'boards', {
       name: "Bob Dylan's discography",
       defaultLists: false,
@@ -182,45 +182,44 @@ async function main() {
     'creating board'
   )).data.id;
 
-  let images_by_decade_index = 0;
-  for (let discography_by_decade_index = 0; discography_by_decade_index < discography_by_decade.length; discography_by_decade_index++) {
-    const decade = discography_by_decade[discography_by_decade_index];
+  let imagesByDecadeIndex = 0;
+
+  for (const decade of discographyByDecade) {
     const year = Object.keys(decade)[0];
-    const list_id = (await trello_post(
+    const listId = (await trelloPost(
       'lists', {
         name: `${year}0`,
-        idBoard: board_id,
+        idBoard: boardId,
         pos: 'bottom',
       },
       `creating list for ${year}`
     )).data.id;
 
-    while (Object.keys(images_by_decade[images_by_decade_index])[0] != year) {
-      ++images_by_decade_index;
+    while (Object.keys(imagesByDecade[imagesByDecadeIndex])[0] != year) {
+      ++imagesByDecadeIndex;
     };
-    const image_decade = images_by_decade[images_by_decade_index];
+    const imageDecade = imagesByDecade[imagesByDecadeIndex];
 
-    let image_decade_index = 0;
-    for (let decade_index = 0; decade_index < decade[year].length; decade_index++) {
-      const disk = decade[year][decade_index];
-      const card_id = (await trello_post(
+    let imageDecadeIndex = 0;
+    for (const disk of decade[year]) {
+      const cardId = (await trelloPost(
         'cards', {
           name: `${disk.year} - ${disk.name}`,
-          idList: list_id,
+          idList: listId,
         },
         `creating card for ${disk.name}`
       )).data.id;
 
-      const image_decade_previous_index = image_decade_index;
+      const imageDecadePreviousIndex = imageDecadeIndex;
       let found = false;
 
-      while (image_decade_index < image_decade[year].length && !(new RegExp(`${disk.name.toLowerCase()}`).test(image_decade[year][image_decade_index].name.toLowerCase()))) {
-        ++image_decade_index;
+      while (imageDecadeIndex < imageDecade[year].length && !(new RegExp(`${disk.name.toLowerCase()}`).test(imageDecade[year][imageDecadeIndex].name.toLowerCase()))) {
+        ++imageDecadeIndex;
       };
 
-      if (image_decade_index >= image_decade[year].length) {
-        image_decade_index = image_decade_previous_index;
-        const album_from_spotify = (await get(
+      if (imageDecadeIndex >= imageDecade[year].length) {
+        imageDecadeIndex = imageDecadePreviousIndex;
+        const albumFromSpotify = (await get(
           SPOTIFY_SEARCH_URL, {
             q: `album:${disk.name} artist:Bob Dylan`,
             type: 'album',
@@ -228,24 +227,24 @@ async function main() {
           }, {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${spotify_token}`,
+            'Authorization': `Bearer ${spotifyToken}`,
           },
           'cover art from spotify'
         )).data.albums.items;
 
-        if (album_from_spotify.length > 0) {
-          trello_post(
-            `cards/${card_id}/attachments`, {
-              url: album_from_spotify[0].images[0].url,
+        if (albumFromSpotify.length > 0) {
+          trelloPost(
+            `cards/${cardId}/attachments`, {
+              url: albumFromSpotify[0].images[0].url,
               setCover: true,
             },
             `creating attachment for ${disk.name}`
           );
         }
       } else {
-        trello_post(
-          `cards/${card_id}/attachments`, {
-            url: image_decade[year][image_decade_index].images[0].url,
+        trelloPost(
+          `cards/${cardId}/attachments`, {
+            url: imageDecade[year][imageDecadeIndex].images[0].url,
             setCover: true,
           },
           `creating attachment for ${disk.name}`
