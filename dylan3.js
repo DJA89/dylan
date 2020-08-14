@@ -50,7 +50,6 @@ async function trelloPost(resource, params, identifier) {
   try {
     // Trello has a limit of 100 requests every 10 seconds, we use promiseWithRetry to retry in case one fails
     await promiseWithRetry(async function() {
-    console.log(identifier);
       response = await axios.post(`${TRELLO_BASE_URL}${resource}`, {},
       {
         params: {
@@ -76,8 +75,8 @@ function discographySorter(a, b) {
   }
 };
 
-async function main() {
-  console.log('Starting...');
+
+function processFile() {
   const filePath = process.argv[3] || './discography.txt';
 
   console.log('Processing file...');
@@ -108,6 +107,10 @@ async function main() {
     }
   });
 
+  return discographyByDecade;
+};
+
+async function accessAndAlbumsFromSpotify() {
   console.log('Obtaining album covers from spotify...');
 
   const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -191,6 +194,10 @@ async function main() {
     }
   });
 
+  return { spotifyToken, imagesByDecade };
+};
+
+async function createTrelloBoard(discographyByDecade, spotifyToken, imagesByDecade) {
   console.log('Creating board on Trello...');
   const boardId = (await trelloPost(
     'boards', {
@@ -271,11 +278,18 @@ async function main() {
       });
       Promise.all(card_requests);
     }));
-
-
   });
   Promise.all(list_requests);
-  console.log('Finished!');
+};
+
+async function main() {
+  console.log('Starting...');
+
+  const discographyByDecade = processFile();
+
+  const { spotifyToken, imagesByDecade } = await accessAndAlbumsFromSpotify();
+
+  createTrelloBoard(discographyByDecade, spotifyToken, imagesByDecade);
 };
 
 main().catch(function(error) {
