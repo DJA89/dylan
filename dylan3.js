@@ -13,6 +13,22 @@ const TRELLO_BASE_URL = 'https://api.trello.com/1/';
 
 const TRELLO_USER_TOKEN = process.argv[2] || process.env.TRELLO_USER_TOKEN;
 
+const promiseWithRetry = (fn, ms=10000, maxRetries=5) => new Promise((resolve,reject) => {
+    let retries = 0;
+    fn()
+    .then(resolve)
+    .catch(() => {
+        setTimeout(() => {
+            console.log('retrying failed promise...');
+            ++retries;
+            if(retries == maxRetries) {
+                return reject('maximum retries exceeded');
+            }
+            promiseWithRetry(fn, ms).then(resolve);
+        }, ms);
+    })
+});
+
 async function get(url, params, headers, identifier) {
   let response;
   try {
@@ -32,16 +48,18 @@ async function get(url, params, headers, identifier) {
 async function trelloPost(resource, params, identifier) {
   let response;
   try {
-    response = await axios.post(`${TRELLO_BASE_URL}${resource}`, {},
+    // Trello has a limit of 100 requests every 10 seconds, we use promiseWithRetry to retry in case one fails
+    await promiseWithRetry(async function() {
+    console.log(identifier);
+      response = await axios.post(`${TRELLO_BASE_URL}${resource}`, {},
       {
         params: {
           ...params,
           key: process.env.TRELLO_API_KEY,
           token: TRELLO_USER_TOKEN,
         },
-      }).catch(function (error) {
-        console.log(`Request error on ${identifier} on trello : ${error}`);
-      });
+      })
+    });
   } catch (err) {
     console.log(`Application error on ${identifier} on trello: ${err}`);
   }
@@ -182,76 +200,81 @@ async function main() {
     'creating board'
   )).data.id;
 
-  let imagesByDecadeIndex = 0;
-
-  for (const decade of discographyByDecade) {
+  const list_requests = [];
+  discographyByDecade.forEach(function (decade, decadeIndex) {
     const year = Object.keys(decade)[0];
-    const listId = (await trelloPost(
+    list_requests.push(trelloPost(
       'lists', {
         name: `${year}0`,
         idBoard: boardId,
-        pos: 'bottom',
+        pos: decadeIndex + 1,
       },
       `creating list for ${year}`
-    )).data.id;
+    ).then(function (response) {
+      const listId = response.data.id
 
-    while (Object.keys(imagesByDecade[imagesByDecadeIndex])[0] != year) {
-      ++imagesByDecadeIndex;
-    };
-    const imageDecade = imagesByDecade[imagesByDecadeIndex];
-
-    let imageDecadeIndex = 0;
-    for (const disk of decade[year]) {
-      const cardId = (await trelloPost(
-        'cards', {
-          name: `${disk.year} - ${disk.name}`,
-          idList: listId,
-        },
-        `creating card for ${disk.name}`
-      )).data.id;
-
-      const imageDecadePreviousIndex = imageDecadeIndex;
-      let found = false;
-
-      while (imageDecadeIndex < imageDecade[year].length && !(new RegExp(`${disk.name.toLowerCase()}`).test(imageDecade[year][imageDecadeIndex].name.toLowerCase()))) {
-        ++imageDecadeIndex;
-      };
-
-      if (imageDecadeIndex >= imageDecade[year].length) {
-        imageDecadeIndex = imageDecadePreviousIndex;
-        const albumFromSpotify = (await get(
-          SPOTIFY_SEARCH_URL, {
-            q: `album:${disk.name} artist:Bob Dylan`,
-            type: 'album',
-            limit: 1,
-          }, {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${spotifyToken}`,
+      const imagesByDecadeIndex = imagesByDecade.findIndex((imageByDecadeElement) => (
+        Object.keys(imageByDecadeElement)[0] === year
+      ));
+      const imageDecade = imagesByDecade[imagesByDecadeIndex];
+      const card_requests = [];
+      decade[year].forEach(function (disk, diskIndex) {
+        card_requests.push(trelloPost(
+          'cards', {
+            name: `${disk.year} - ${disk.name}`,
+            idList: listId,
+            pos: diskIndex + 1,
           },
-          'cover art from spotify'
-        )).data.albums.items;
+          `creating card for ${disk.name}`
+        ).then(function (response) {
+          const cardId = response.data.id;
 
-        if (albumFromSpotify.length > 0) {
-          trelloPost(
-            `cards/${cardId}/attachments`, {
-              url: albumFromSpotify[0].images[0].url,
-              setCover: true,
-            },
-            `creating attachment for ${disk.name}`
-          );
-        }
-      } else {
-        trelloPost(
-          `cards/${cardId}/attachments`, {
-            url: imageDecade[year][imageDecadeIndex].images[0].url,
-            setCover: true,
-          },
-          `creating attachment for ${disk.name}`
-        );
-      }
-    };
-  };
+          const imageDecadeIndex = imageDecade[year].findIndex((imageDecadeElement) => (
+            new RegExp(`^${disk.name.toLowerCase()}`).test(imageDecadeElement.name.toLowerCase())
+          ));
+
+          if (imageDecadeIndex === -1) {
+            get(
+              SPOTIFY_SEARCH_URL, {
+                q: `album:${disk.name} artist:Bob Dylan`,
+                type: 'album',
+                limit: 1,
+              }, {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${spotifyToken}`,
+              },
+              'cover art from spotify'
+            ).then(function (response) {
+              const albumFromSpotify = response.data.albums.items;
+
+              if (albumFromSpotify.length > 0) {
+                trelloPost(
+                  `cards/${cardId}/attachments`, {
+                    url: albumFromSpotify[0].images[0].url,
+                    setCover: true,
+                  },
+                  `creating attachment for ${disk.name}`
+                );
+              }
+            });
+          } else {
+            trelloPost(
+              `cards/${cardId}/attachments`, {
+                url: imageDecade[year][imageDecadeIndex].images[0].url,
+                setCover: true,
+              },
+              `creating attachment for ${disk.name}`
+            );
+          }
+        }));
+      });
+      Promise.all(card_requests);
+    }));
+
+
+  });
+  Promise.all(list_requests);
   console.log('Finished!');
 };
 
